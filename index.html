@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1" />
+<title>Ciclo GLP</title>
+<meta name="description" content="Agenda de doses de GLP-1 com a curva de referência da bula." />
+
+<!-- PWA -->
+<link rel="manifest" href="manifest.webmanifest" />
+<meta name="theme-color" content="#0E7C5A" />
+
+<!-- iOS: standalone + ícone -->
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="default" />
+<meta name="apple-mobile-web-app-title" content="Ciclo GLP" />
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { background: #EAF7F0; font-family: 'Inter', system-ui, sans-serif; color: #123B33; }
+  body { padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
+  .display { font-family: 'Space Grotesk', sans-serif; }
+  input, select, button { font-family: inherit; }
+  #root { min-height: 100vh; }
+  .spin { width: 40px; height: 40px; border: 3px solid #D7E3DD; border-top-color: #16C784; border-radius: 50%; animation: r 0.8s linear infinite; margin: 40vh auto; }
+  @keyframes r { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+<div id="root"><div class="spin"></div></div>
+
+<script src="vendor/react.min.js"></script>
+<script src="vendor/react-dom.min.js"></script>
+
+<script>
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", () => {
+      navigator.serviceWorker.register("sw.js").catch((e) => console.warn("SW:", e));
+    });
+  }
+</script>
+
+<script src="app.compiled.js"></script>
+</body>
+</html>
