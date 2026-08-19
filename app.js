@@ -184,7 +184,9 @@ const Chips = ({ items, val, onPick, fmt }) => (
 function ProfileForm({ initial, onSave, onClose, first }) {
   const [p, setP] = useState(initial);
   const bmi = p.weightKg && p.heightCm ? +p.weightKg / Math.pow(+p.heightCm / 100, 2) : null;
-  const ok = p.age && p.weightKg && p.heightCm;
+  const diario = MEDS[p.med].intervalDays === 1;
+  const ok = p.age && p.weightKg && p.heightCm && (diario || p.diaSemana !== undefined && p.diaSemana !== "");
+  const DIAS = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
   const body = (
     <>
       <Row><h2 className="display" style={{ fontSize: 20, fontWeight: 700 }}>{first ? "Seu tratamento" : "Editar perfil"}</h2>{!first && <button onClick={onClose} style={{ border: "none", background: "#E4F0E9", borderRadius: 999, width: 32, height: 32 }}>✕</button>}</Row>
@@ -195,6 +197,19 @@ function ProfileForm({ initial, onSave, onClose, first }) {
       <Label>Dose prescrita</Label>
       <Chips items={MEDS[p.med].doses} val={+p.doseMg} onPick={(d) => setP({ ...p, doseMg: d })} fmt={(d) => d + " mg"} />
       <p style={{ fontSize: 10, color: "#9AAFA7", margin: "6px 0 14px" }}>A dose é definida pelo seu médico. O app apenas registra.</p>
+
+      {!diario && (
+        <>
+          <Label>Dia da aplicação</Label>
+          <Chips items={[0, 1, 2, 3, 4, 5, 6]} val={p.diaSemana} onPick={(d) => setP({ ...p, diaSemana: d })} fmt={(d) => DIAS[d].slice(0, 3)} />
+          <p style={{ fontSize: 10, color: "#9AAFA7", margin: "6px 0 14px" }}>O dia da semana em que você costuma aplicar.</p>
+        </>
+      )}
+
+      <Label>Horário da aplicação</Label>
+      <input style={{ ...inp, marginBottom: 4 }} type="time" value={p.horario} onChange={(e) => setP({ ...p, horario: e.target.value })} />
+      <p style={{ fontSize: 10, color: "#9AAFA7", margin: "6px 0 14px" }}>{diario ? "O horário em que você aplica todos os dias." : "Ajuda a posicionar a curva com precisão."}</p>
+
       <div style={{ display: "flex", gap: 10, marginBottom: 10 }}>
         <div style={{ flex: 1 }}><Label>Idade</Label><input style={inp} type="number" inputMode="numeric" value={p.age} onChange={(e) => setP({ ...p, age: e.target.value })} placeholder="anos" /></div>
         <div style={{ flex: 1 }}><Label>Sexo</Label>
@@ -257,7 +272,24 @@ function App() {
 
   if (!ready) return null;
   if (!consent) return <Consent onAccept={() => { save(K.consent, true); setConsent(true); }} />;
-  if (!profile) return <ProfileForm first initial={{ med: "Semaglutida", doseMg: 0.5, age: "", weightKg: "", heightCm: "", sex: "F" }} onSave={(p) => { setProfile(p); const t = new Date(); t.setHours(9, 0, 0, 0); setDoses([{ id: 1, date: new Date(t.getTime() - (MEDS[p.med].intervalDays === 1 ? 0 : 3) * dayMs), med: p.med, doseMg: p.doseMg, site: SITES[0], pain: 2 }]); setWeights([{ id: 1, date: new Date(), kg: p.weightKg }]); }} />;
+  if (!profile) return <ProfileForm first initial={{ med: "Semaglutida", doseMg: 0.5, age: "", weightKg: "", heightCm: "", sex: "F", diaSemana: "", horario: "09:00" }} onSave={(p) => {
+    setProfile(p);
+    // ancora a primeira dose na aplicação mais recente que corresponde ao dia/horário escolhidos
+    const [hh, mm] = (p.horario || "09:00").split(":").map(Number);
+    const base = new Date(); base.setHours(hh || 9, mm || 0, 0, 0);
+    if (MEDS[p.med].intervalDays === 1) {
+      // diária: última dose = hoje no horário (ou ontem, se ainda não deu a hora)
+      if (base.getTime() > Date.now()) base.setDate(base.getDate() - 1);
+      setDoses([{ id: 1, date: base, med: p.med, doseMg: p.doseMg, site: SITES[0], pain: 2 }]);
+    } else {
+      // semanal: recua até o dia da semana escolhido (a aplicação mais recente)
+      let diff = (base.getDay() - p.diaSemana + 7) % 7;
+      base.setDate(base.getDate() - diff);
+      if (base.getTime() > Date.now()) base.setDate(base.getDate() - 7);
+      setDoses([{ id: 1, date: base, med: p.med, doseMg: p.doseMg, site: SITES[0], pain: 2 }]);
+    }
+    setWeights([{ id: 1, date: new Date(), kg: p.weightKg }]);
+  }} />;
 
   const bmi = profile.weightKg / Math.pow(profile.heightCm / 100, 2), c = bmiClass(bmi);
   const ssPeak = last ? steadyStatePeak(last.med, last.doseMg) : 1;
@@ -416,7 +448,7 @@ function App() {
         <p style={{ fontSize: 10, color: "#9AAFA7", marginBottom: 12 }}>A bula indica exposição semelhante em abdômen, coxa e braço. O registro serve para o rodízio.</p>
         <Label>Dor na aplicação: {dForm.pain}/10</Label>
         <input type="range" min="0" max="10" value={dForm.pain} onChange={(e) => setDForm({ ...dForm, pain: +e.target.value })} style={{ width: "100%", accentColor: "#16C784", marginBottom: 16 }} />
-        <button style={btnPrimary} onClick={() => { setDoses((p) => [...p, { id: Date.now(), date: new Date(dForm.date + "T09:00:00"), med: dForm.med, doseMg: +dForm.doseMg, site: dForm.site, pain: +dForm.pain }].sort((a, b) => a.date - b.date)); setDForm(null); }}>Salvar dose</button>
+        <button style={btnPrimary} onClick={() => { setDoses((p) => [...p, { id: Date.now(), date: new Date(dForm.date + "T" + (profile.horario || "09:00") + ":00"), med: dForm.med, doseMg: +dForm.doseMg, site: dForm.site, pain: +dForm.pain }].sort((a, b) => a.date - b.date)); setDForm(null); }}>Salvar dose</button>
       </Sheet>}
 
       {wForm && <Sheet onClose={() => setWForm(null)}>

@@ -640,7 +640,9 @@ function ProfileForm({
 }) {
   const [p, setP] = useState(initial);
   const bmi = p.weightKg && p.heightCm ? +p.weightKg / Math.pow(+p.heightCm / 100, 2) : null;
-  const ok = p.age && p.weightKg && p.heightCm;
+  const diario = MEDS[p.med].intervalDays === 1;
+  const ok = p.age && p.weightKg && p.heightCm && (diario || p.diaSemana !== undefined && p.diaSemana !== "");
+  const DIAS = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
   const body = /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Row, null, /*#__PURE__*/React.createElement("h2", {
     className: "display",
     style: {
@@ -690,7 +692,38 @@ function ProfileForm({
       color: "#9AAFA7",
       margin: "6px 0 14px"
     }
-  }, "A dose \xE9 definida pelo seu m\xE9dico. O app apenas registra."), /*#__PURE__*/React.createElement("div", {
+  }, "A dose \xE9 definida pelo seu m\xE9dico. O app apenas registra."), !diario && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Label, null, "Dia da aplica\xE7\xE3o"), /*#__PURE__*/React.createElement(Chips, {
+    items: [0, 1, 2, 3, 4, 5, 6],
+    val: p.diaSemana,
+    onPick: d => setP({
+      ...p,
+      diaSemana: d
+    }),
+    fmt: d => DIAS[d].slice(0, 3)
+  }), /*#__PURE__*/React.createElement("p", {
+    style: {
+      fontSize: 10,
+      color: "#9AAFA7",
+      margin: "6px 0 14px"
+    }
+  }, "O dia da semana em que voc\xEA costuma aplicar.")), /*#__PURE__*/React.createElement(Label, null, "Hor\xE1rio da aplica\xE7\xE3o"), /*#__PURE__*/React.createElement("input", {
+    style: {
+      ...inp,
+      marginBottom: 4
+    },
+    type: "time",
+    value: p.horario,
+    onChange: e => setP({
+      ...p,
+      horario: e.target.value
+    })
+  }), /*#__PURE__*/React.createElement("p", {
+    style: {
+      fontSize: 10,
+      color: "#9AAFA7",
+      margin: "6px 0 14px"
+    }
+  }, diario ? "O horário em que você aplica todos os dias." : "Ajuda a posicionar a curva com precisão."), /*#__PURE__*/React.createElement("div", {
     style: {
       display: "flex",
       gap: 10,
@@ -895,20 +928,41 @@ function App() {
       age: "",
       weightKg: "",
       heightCm: "",
-      sex: "F"
+      sex: "F",
+      diaSemana: "",
+      horario: "09:00"
     },
     onSave: p => {
       setProfile(p);
-      const t = new Date();
-      t.setHours(9, 0, 0, 0);
-      setDoses([{
-        id: 1,
-        date: new Date(t.getTime() - (MEDS[p.med].intervalDays === 1 ? 0 : 3) * dayMs),
-        med: p.med,
-        doseMg: p.doseMg,
-        site: SITES[0],
-        pain: 2
-      }]);
+      // ancora a primeira dose na aplicação mais recente que corresponde ao dia/horário escolhidos
+      const [hh, mm] = (p.horario || "09:00").split(":").map(Number);
+      const base = new Date();
+      base.setHours(hh || 9, mm || 0, 0, 0);
+      if (MEDS[p.med].intervalDays === 1) {
+        // diária: última dose = hoje no horário (ou ontem, se ainda não deu a hora)
+        if (base.getTime() > Date.now()) base.setDate(base.getDate() - 1);
+        setDoses([{
+          id: 1,
+          date: base,
+          med: p.med,
+          doseMg: p.doseMg,
+          site: SITES[0],
+          pain: 2
+        }]);
+      } else {
+        // semanal: recua até o dia da semana escolhido (a aplicação mais recente)
+        let diff = (base.getDay() - p.diaSemana + 7) % 7;
+        base.setDate(base.getDate() - diff);
+        if (base.getTime() > Date.now()) base.setDate(base.getDate() - 7);
+        setDoses([{
+          id: 1,
+          date: base,
+          med: p.med,
+          doseMg: p.doseMg,
+          site: SITES[0],
+          pain: 2
+        }]);
+      }
       setWeights([{
         id: 1,
         date: new Date(),
@@ -1514,7 +1568,7 @@ function App() {
     onClick: () => {
       setDoses(p => [...p, {
         id: Date.now(),
-        date: new Date(dForm.date + "T09:00:00"),
+        date: new Date(dForm.date + "T" + (profile.horario || "09:00") + ":00"),
         med: dForm.med,
         doseMg: +dForm.doseMg,
         site: dForm.site,
