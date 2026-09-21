@@ -5,6 +5,24 @@ const {
   useRef
 } = React;
 
+/* ===== CONFIG DE MONETIZAÇÃO ===== */
+// Troque pela URL das suas Edge Functions do Supabase:
+const FUNCTIONS_URL = "https://yyblozmymrqrtwidknib.supabase.co/functions/v1";
+const PRECO = "R$ 19,90";
+const LICENSE_KEY = "cglp:licenca";
+const licencaLocal = () => {
+  try {
+    return localStorage.getItem(LICENSE_KEY) === "ativa";
+  } catch {
+    return false;
+  }
+};
+const salvarLicenca = () => {
+  try {
+    localStorage.setItem(LICENSE_KEY, "ativa");
+  } catch {}
+};
+
 /* ===== PARÂMETROS DE BULA (meia-vida, Tmax) ===== */
 const MEDS = {
   Semaglutida: {
@@ -156,6 +174,120 @@ const arcPath = (cx, cy, r, a0, a1) => {
   return `M ${x0} ${y0} A ${r} ${r} 0 ${a1 - a0 > 180 ? 1 : 0} 1 ${x1} ${y1}`;
 };
 const selectable = Object.keys(MEDS).filter(m => !MEDS[m].investigacional);
+
+/* ============================================================
+   NARRATIVA DO CICLO — o que o MECANISMO DE AÇÃO e a bula descrevem
+   em cada fase da semana. Não afirma o que o usuário sente; descreve
+   o comportamento esperado da droga segundo o fabricante, atrelado
+   à fase da curva (subida, pico, platô, vale).
+   ============================================================ */
+// classe do fármaco define a narrativa (semanais: GLP-1 puro x duplo)
+function classeNarrativa(med) {
+  if (MEDS[med].intervalDays === 1) return "diario";
+  return MEDS[med].vias.includes("GIP") ? "duplo" : "glp1";
+}
+const NARRATIVA = {
+  glp1: {
+    titulo: "Semaglutida ao longo da semana",
+    dias: [{
+      fase: "Absorção",
+      farm: "A dose recém-aplicada é absorvida no subcutâneo; a concentração começa a subir rumo ao Tmax (1–3 dias).",
+      sensacao: "O sinal de saciedade se restabelece gradualmente. Muitos relatam menos 'fome de fundo' já nas primeiras horas.",
+      cor: "#3B82F6"
+    }, {
+      fase: "Subida",
+      farm: "Concentração em elevação. A ativação de receptores GLP-1 no hipotálamo e no trato digestivo se intensifica.",
+      sensacao: "Esvaziamento gástrico mais lento — a comida 'permanece' mais tempo, prolongando a sensação de plenitude após as refeições.",
+      cor: "#3B82F6"
+    }, {
+      fase: "Pico",
+      farm: "A curva atinge seu ponto máximo no ciclo. Ação central sobre o apetite no auge segundo o mecanismo.",
+      sensacao: "Fase de maior controle de apetite esperada. Redução de 'food noise' e menor impulso por beliscar entre refeições.",
+      cor: "#16C784"
+    }, {
+      fase: "Platô alto",
+      farm: "Concentração ainda elevada, iniciando declínio lento graças à meia-vida longa (~7 dias).",
+      sensacao: "Saciedade sustentada. O efeito não 'cai' de um dia para o outro — é o que permite a dose semanal.",
+      cor: "#16C784"
+    }, {
+      fase: "Declínio",
+      farm: "A concentração desce de forma gradual e previsível. Boa parte do efeito ainda está presente.",
+      sensacao: "Controle de apetite mantido, tendendo a suavizar. Efeito acumulado das semanas anteriores continua atuando.",
+      cor: "#F5A623"
+    }, {
+      fase: "Vale próximo",
+      farm: "Concentração se aproxima do ponto mais baixo do ciclo, antes da próxima dose.",
+      sensacao: "Alguns notam o apetite um pouco mais presente perto do fim do intervalo — esperado pela farmacocinética.",
+      cor: "#F5A623"
+    }, {
+      fase: "Vale / renovação",
+      farm: "Ponto mais baixo do ciclo. A próxima aplicação recompõe a concentração e reinicia a curva.",
+      sensacao: "Momento da nova dose. Manter o dia fixo estabiliza o efeito ao longo das semanas.",
+      cor: "#F0553B"
+    }]
+  },
+  duplo: {
+    titulo: "Tirzepatida ao longo da semana",
+    dias: [{
+      fase: "Absorção",
+      farm: "Dose absorvida; concentração sobe rumo ao Tmax (~24 h). Duas vias entram em ação: GLP-1 e GIP.",
+      sensacao: "Restabelecimento da saciedade. A via GIP soma efeito metabólico ao controle de apetite do GLP-1.",
+      cor: "#3B82F6"
+    }, {
+      fase: "Pico",
+      farm: "Curva próxima do máximo (Tmax ~1 dia). Ação combinada GLP-1 + GIP no auge segundo o mecanismo.",
+      sensacao: "Fase de maior controle esperado. A dupla ação tende a somar saciedade e regulação metabólica.",
+      cor: "#16C784"
+    }, {
+      fase: "Platô alto",
+      farm: "Concentração elevada, declínio ainda lento (meia-vida ~5 dias). Acúmulo de ~1,6× no equilíbrio.",
+      sensacao: "Saciedade robusta e sustentada, característica do agonista duplo.",
+      cor: "#16C784"
+    }, {
+      fase: "Declínio",
+      farm: "Descida gradual e previsível da concentração. As duas vias seguem ativas.",
+      sensacao: "Controle de apetite mantido, começando a suavizar em direção ao fim do intervalo.",
+      cor: "#F5A623"
+    }, {
+      fase: "Declínio",
+      farm: "Concentração continua caindo de forma controlada; efeito acumulado dos ciclos anteriores permanece.",
+      sensacao: "Saciedade presente, tendência a redução leve — comportamento esperado da curva.",
+      cor: "#F5A623"
+    }, {
+      fase: "Vale próximo",
+      farm: "Aproximação do ponto mais baixo do ciclo, antes da reaplicação.",
+      sensacao: "Apetite pode se mostrar um pouco mais presente perto da próxima dose.",
+      cor: "#F5A623"
+    }, {
+      fase: "Vale / renovação",
+      farm: "Ponto mais baixo. A próxima dose recompõe a concentração das duas vias e reinicia o ciclo.",
+      sensacao: "Momento da nova aplicação. Dia fixo mantém o efeito estável ao longo das semanas.",
+      cor: "#F0553B"
+    }]
+  },
+  diario: {
+    titulo: "Liraglutida ao longo do dia",
+    dias: [{
+      fase: "Pico do dia",
+      farm: "Meia-vida curta (~13 h) e Tmax 8–12 h: a concentração sobe e atinge o pico algumas horas após a aplicação diária.",
+      sensacao: "Saciedade mais concentrada no período após a dose. Por isso a aplicação é diária, no mesmo horário.",
+      cor: "#16C784"
+    }, {
+      fase: "Declínio",
+      farm: "Após o pico, a concentração cai ao longo do dia; a dose seguinte recompõe o nível.",
+      sensacao: "Efeito de apetite tende a suavizar até a próxima aplicação. A regularidade diária mantém a saciedade estável.",
+      cor: "#F5A623"
+    }]
+  }
+};
+
+// mapeia o dia do ciclo (0–6) para o índice da narrativa (que pode ter 2 ou 7 fases)
+function narrativaDoDia(med, dayInCycle, nSeg) {
+  const cls = classeNarrativa(med);
+  const arr = NARRATIVA[cls].dias;
+  if (cls === "diario") return arr[dayInCycle < 4 ? 0 : 1];
+  return arr[Math.min(dayInCycle, arr.length - 1)];
+}
 
 /* ===== localStorage ===== */
 const K = {
@@ -485,6 +617,522 @@ const inp = {
   fontSize: 14
 };
 
+/* ===== Linha do tempo do ciclo: o que a droga faz dia a dia ===== */
+function CycleTimeline({
+  doses
+}) {
+  const [aberto, setAberto] = useState(null);
+  const today = new Date();
+  today.setHours(12, 0, 0, 0);
+  const last = doses[doses.length - 1],
+    med = last.med,
+    cls = classeNarrativa(med);
+  const iv = MEDS[med].intervalDays,
+    cycleH = iv * 24,
+    t0 = last.date.getTime();
+  const rel = t => doses.reduce((a, d) => a + bateman(d.med, (t - d.date.getTime()) / 3600000, d.doseMg), 0);
+  const ssPeak = steadyStatePeak(med, last.doseMg);
+  const nDias = cls === "diario" ? 2 : 7;
+  const dayInCycle = Math.min(nDias - 1, Math.max(0, Math.floor((today.getTime() - t0) / 3600000 / (cycleH / nDias))));
+  const info = NARRATIVA[cls];
+  const dias = Array.from({
+    length: nDias
+  }, (_, i) => {
+    const nd = narrativaDoDia(med, i, nDias);
+    const mid = t0 + (i + 0.5) * cycleH / nDias * 3600000;
+    const pct = Math.round(Math.min(100, rel(mid) / ssPeak * 100));
+    return {
+      ...nd,
+      pct,
+      i
+    };
+  });
+  return /*#__PURE__*/React.createElement("div", {
+    style: cardStyle("linear-gradient(160deg,#FFFFFF,#F4FAFF)")
+  }, /*#__PURE__*/React.createElement(Row, null, /*#__PURE__*/React.createElement(Label, null, "\uD83D\uDDD3\uFE0F O que acontece no ciclo"), /*#__PURE__*/React.createElement(Pill, {
+    bg: "#1273D622",
+    c: "#1273D6"
+  }, "segundo o mecanismo")), /*#__PURE__*/React.createElement("p", {
+    style: {
+      fontSize: 12,
+      fontWeight: 600,
+      margin: "2px 0 12px"
+    }
+  }, info.titulo), /*#__PURE__*/React.createElement("div", {
+    style: {
+      position: "relative"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      position: "absolute",
+      left: 15,
+      top: 6,
+      bottom: 6,
+      width: 2,
+      background: "#E6EFE9"
+    }
+  }), dias.map(d => {
+    const hoje = d.i === dayInCycle;
+    const on = aberto === d.i || aberto === null && hoje;
+    const rotulo = cls === "diario" ? d.i === 0 ? "Após a dose" : "Fim do dia" : `Dia ${d.i + 1}`;
+    return /*#__PURE__*/React.createElement("div", {
+      key: d.i,
+      style: {
+        position: "relative",
+        paddingLeft: 42,
+        marginBottom: 10
+      }
+    }, /*#__PURE__*/React.createElement("div", {
+      style: {
+        position: "absolute",
+        left: 6,
+        top: 2,
+        width: 20,
+        height: 20,
+        borderRadius: 10,
+        background: hoje ? d.cor : "#fff",
+        border: `2px solid ${d.cor}`,
+        boxShadow: hoje ? `0 0 0 4px ${d.cor}22` : "none",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center"
+      }
+    }, hoje && /*#__PURE__*/React.createElement("div", {
+      style: {
+        width: 6,
+        height: 6,
+        borderRadius: 3,
+        background: "#fff"
+      }
+    })), /*#__PURE__*/React.createElement("button", {
+      onClick: () => setAberto(on ? -1 : d.i),
+      style: {
+        width: "100%",
+        textAlign: "left",
+        background: on ? "#F4FAFF" : "transparent",
+        border: "none",
+        borderRadius: 12,
+        padding: on ? "8px 10px" : "2px 4px",
+        cursor: "pointer"
+      }
+    }, /*#__PURE__*/React.createElement("div", {
+      style: {
+        display: "flex",
+        alignItems: "center",
+        gap: 8
+      }
+    }, /*#__PURE__*/React.createElement("span", {
+      style: {
+        fontSize: 12,
+        fontWeight: 700,
+        color: hoje ? d.cor : "#41564F"
+      }
+    }, rotulo), /*#__PURE__*/React.createElement("span", {
+      style: {
+        fontSize: 11,
+        fontWeight: 600,
+        color: d.cor
+      }
+    }, "\xB7 ", d.fase), hoje && /*#__PURE__*/React.createElement("span", {
+      style: {
+        marginLeft: "auto",
+        fontSize: 9,
+        fontWeight: 700,
+        color: "#fff",
+        background: d.cor,
+        padding: "2px 7px",
+        borderRadius: 999
+      }
+    }, "HOJE"), /*#__PURE__*/React.createElement("span", {
+      style: {
+        marginLeft: hoje ? 6 : "auto",
+        fontSize: 10,
+        color: "#93A8A0"
+      }
+    }, d.pct, "%")), on && /*#__PURE__*/React.createElement("div", {
+      style: {
+        marginTop: 6
+      }
+    }, /*#__PURE__*/React.createElement("p", {
+      style: {
+        fontSize: 11,
+        color: "#41564F",
+        lineHeight: 1.45,
+        marginBottom: 5
+      }
+    }, /*#__PURE__*/React.createElement("b", {
+      style: {
+        color: "#1273D6"
+      }
+    }, "Farmacologia \xB7 "), d.farm), /*#__PURE__*/React.createElement("p", {
+      style: {
+        fontSize: 11,
+        color: "#41564F",
+        lineHeight: 1.45
+      }
+    }, /*#__PURE__*/React.createElement("b", {
+      style: {
+        color: "#0E7C5A"
+      }
+    }, "Esperado \xB7 "), d.sensacao))));
+  })), /*#__PURE__*/React.createElement("p", {
+    style: {
+      fontSize: 10,
+      color: "#9AAFA7",
+      marginTop: 6,
+      lineHeight: 1.4
+    }
+  }, "Descri\xE7\xE3o do comportamento m\xE9dio do medicamento segundo o mecanismo de a\xE7\xE3o e a bula do fabricante, alinhada \xE0 curva de refer\xEAncia. ", /*#__PURE__*/React.createElement("b", null, "N\xE3o \xE9 o que voc\xEA necessariamente sente"), " \u2014 respostas individuais variam. N\xE3o substitui orienta\xE7\xE3o m\xE9dica."));
+}
+
+/* ===== Paywall (tela de compra / ativação) ===== */
+function Paywall({
+  onLiberado
+}) {
+  const [aba, setAba] = useState("comprar"); // comprar | codigo
+  const [email, setEmail] = useState("");
+  const [carregando, setCarregando] = useState(false);
+  const [erro, setErro] = useState("");
+  const [codigo, setCodigo] = useState("");
+  const [codigoGerado, setCodigoGerado] = useState("");
+
+  // ao voltar do checkout com ?pago=1, busca o código gerado
+  useEffect(() => {
+    const q = new URLSearchParams(location.search);
+    const ref = localStorage.getItem("cglp:ref");
+    if (q.get("pago") === "1" && ref) {
+      setAba("codigo");
+      setCarregando(true);
+      let tentativas = 0;
+      const busca = async () => {
+        tentativas++;
+        try {
+          const r = await fetch(FUNCTIONS_URL + "/validar-codigo", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+              modo: "buscar",
+              ref
+            })
+          });
+          const d = await r.json();
+          if (d.ok && d.codigo) {
+            setCodigoGerado(d.codigo);
+            setCodigo(d.codigo);
+            setCarregando(false);
+            localStorage.removeItem("cglp:ref");
+            return;
+          }
+        } catch {}
+        if (tentativas < 8) setTimeout(busca, 2500);else {
+          setCarregando(false);
+          setErro("O pagamento pode levar alguns instantes. Se você pagou, use seu código quando chegar.");
+        }
+      };
+      busca();
+      history.replaceState(null, "", location.pathname);
+    }
+  }, []);
+  async function comprar() {
+    setErro("");
+    setCarregando(true);
+    try {
+      const r = await fetch(FUNCTIONS_URL + "/criar-pagamento", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          email
+        })
+      });
+      const d = await r.json();
+      if (d.init_point) {
+        localStorage.setItem("cglp:ref", d.ref);
+        location.href = d.init_point;
+      } else setErro("Não foi possível iniciar o pagamento. Tente novamente.");
+    } catch {
+      setErro("Falha de conexão. Verifique sua internet.");
+    }
+    setCarregando(false);
+  }
+  async function ativar() {
+    setErro("");
+    setCarregando(true);
+    try {
+      const r = await fetch(FUNCTIONS_URL + "/validar-codigo", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          modo: "ativar",
+          codigo
+        })
+      });
+      const d = await r.json();
+      if (d.ok) {
+        salvarLicenca();
+        onLiberado();
+      } else setErro(d.erro || "Código inválido.");
+    } catch {
+      setErro("Falha de conexão.");
+    }
+    setCarregando(false);
+  }
+  return /*#__PURE__*/React.createElement("div", {
+    style: {
+      maxWidth: 480,
+      margin: "0 auto",
+      padding: 24,
+      minHeight: "100vh",
+      display: "flex",
+      flexDirection: "column",
+      justifyContent: "center"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      textAlign: "center",
+      marginBottom: 24
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      width: 84,
+      height: 84,
+      borderRadius: 24,
+      margin: "0 auto 16px",
+      background: "linear-gradient(135deg,#0E7C5A,#0B5C7A)",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center"
+    }
+  }, /*#__PURE__*/React.createElement("svg", {
+    width: "52",
+    height: "52",
+    viewBox: "0 0 1024 1024"
+  }, /*#__PURE__*/React.createElement("defs", null, /*#__PURE__*/React.createElement("linearGradient", {
+    id: "pw",
+    x1: "0.1",
+    y1: "0",
+    x2: "0.9",
+    y2: "1"
+  }, /*#__PURE__*/React.createElement("stop", {
+    offset: "0",
+    stopColor: "#16C784"
+  }), /*#__PURE__*/React.createElement("stop", {
+    offset: "0.5",
+    stopColor: "#3B82F6"
+  }), /*#__PURE__*/React.createElement("stop", {
+    offset: "1",
+    stopColor: "#8B5CF6"
+  }))), /*#__PURE__*/React.createElement("path", {
+    d: "M 566 210 A 322 322 0 1 1 458 210",
+    fill: "none",
+    stroke: "url(#pw)",
+    strokeWidth: "58",
+    strokeLinecap: "round"
+  }), /*#__PURE__*/React.createElement("circle", {
+    cx: "566",
+    cy: "210",
+    r: "35",
+    fill: "#16C784"
+  }), /*#__PURE__*/React.createElement("g", {
+    transform: "translate(512,512)"
+  }, /*#__PURE__*/React.createElement("path", {
+    d: "M 150 -70 A 168 168 0 1 0 168 40 L 168 8 L 40 8",
+    fill: "none",
+    stroke: "#fff",
+    strokeWidth: "68",
+    strokeLinecap: "round",
+    strokeLinejoin: "round"
+  })))), /*#__PURE__*/React.createElement("h1", {
+    className: "display",
+    style: {
+      fontSize: 28,
+      fontWeight: 700
+    }
+  }, "Ciclo GLP"), /*#__PURE__*/React.createElement("p", {
+    style: {
+      fontSize: 14,
+      color: "#5E7A72",
+      marginTop: 6
+    }
+  }, "Seu acompanhamento completo de GLP-1")), codigoGerado ? /*#__PURE__*/React.createElement("div", {
+    style: {
+      ...cardStyle(),
+      textAlign: "center"
+    }
+  }, /*#__PURE__*/React.createElement("p", {
+    style: {
+      fontSize: 30,
+      marginBottom: 8
+    }
+  }, "\u2705"), /*#__PURE__*/React.createElement("p", {
+    style: {
+      fontWeight: 700,
+      fontSize: 16,
+      marginBottom: 6
+    }
+  }, "Pagamento confirmado!"), /*#__PURE__*/React.createElement("p", {
+    style: {
+      fontSize: 12,
+      color: "#5E7A72",
+      marginBottom: 12
+    }
+  }, "Guarde seu c\xF3digo de acesso. Use-o para desbloquear em outros aparelhos:"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: "#F1FBF6",
+      borderRadius: 12,
+      padding: "14px",
+      fontFamily: "monospace",
+      fontSize: 20,
+      fontWeight: 700,
+      letterSpacing: 2,
+      color: "#0E7C5A",
+      marginBottom: 14
+    }
+  }, codigoGerado), /*#__PURE__*/React.createElement("button", {
+    style: btnPrimary,
+    onClick: () => {
+      salvarLicenca();
+      onLiberado();
+    }
+  }, "Entrar no app")) : /*#__PURE__*/React.createElement("div", {
+    style: cardStyle()
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: 8,
+      marginBottom: 16
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    onClick: () => {
+      setAba("comprar");
+      setErro("");
+    },
+    style: {
+      flex: 1,
+      padding: 10,
+      borderRadius: 12,
+      border: "none",
+      fontWeight: 700,
+      fontSize: 13,
+      background: aba === "comprar" ? "#0E7C5A" : "#F1FBF6",
+      color: aba === "comprar" ? "#fff" : "#41564F"
+    }
+  }, "Comprar"), /*#__PURE__*/React.createElement("button", {
+    onClick: () => {
+      setAba("codigo");
+      setErro("");
+    },
+    style: {
+      flex: 1,
+      padding: 10,
+      borderRadius: 12,
+      border: "none",
+      fontWeight: 700,
+      fontSize: 13,
+      background: aba === "codigo" ? "#0E7C5A" : "#F1FBF6",
+      color: aba === "codigo" ? "#fff" : "#41564F"
+    }
+  }, "J\xE1 tenho c\xF3digo")), aba === "comprar" ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+    style: {
+      textAlign: "center",
+      marginBottom: 14
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "display",
+    style: {
+      fontSize: 40,
+      fontWeight: 800,
+      color: "#123B33"
+    }
+  }, PRECO), /*#__PURE__*/React.createElement("p", {
+    style: {
+      fontSize: 12,
+      color: "#5E7A72"
+    }
+  }, "pagamento \xFAnico \xB7 acesso vital\xEDcio")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 13,
+      color: "#41564F",
+      lineHeight: 1.7,
+      marginBottom: 16
+    }
+  }, "\u2713 Registro de doses e lembretes", /*#__PURE__*/React.createElement("br", null), "\u2713 Curva farmacocin\xE9tica da bula", /*#__PURE__*/React.createElement("br", null), "\u2713 Linha do tempo do ciclo dia a dia", /*#__PURE__*/React.createElement("br", null), "\u2713 Evolu\xE7\xE3o de peso e IMC", /*#__PURE__*/React.createElement("br", null), "\u2713 Todos os princ\xEDpios ativos"), /*#__PURE__*/React.createElement("input", {
+    style: {
+      ...inp,
+      marginBottom: 10
+    },
+    type: "email",
+    placeholder: "Seu e-mail (para recuperar o c\xF3digo)",
+    value: email,
+    onChange: e => setEmail(e.target.value)
+  }), /*#__PURE__*/React.createElement("button", {
+    style: {
+      ...btnPrimary,
+      opacity: carregando ? 0.6 : 1
+    },
+    disabled: carregando,
+    onClick: comprar
+  }, carregando ? "Abrindo pagamento…" : "Pagar com Mercado Pago"), /*#__PURE__*/React.createElement("p", {
+    style: {
+      fontSize: 10,
+      color: "#9AAFA7",
+      textAlign: "center",
+      marginTop: 10
+    }
+  }, "Pagamento processado com seguran\xE7a pelo Mercado Pago. Pix, cart\xE3o ou boleto.")) : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", {
+    style: {
+      fontSize: 13,
+      color: "#41564F",
+      marginBottom: 12
+    }
+  }, "Digite o c\xF3digo que voc\xEA recebeu ap\xF3s a compra:"), carregando && /*#__PURE__*/React.createElement("p", {
+    style: {
+      fontSize: 12,
+      color: "#5E7A72",
+      marginBottom: 10
+    }
+  }, "Confirmando seu pagamento\u2026"), /*#__PURE__*/React.createElement("input", {
+    style: {
+      ...inp,
+      marginBottom: 12,
+      textAlign: "center",
+      fontFamily: "monospace",
+      fontSize: 18,
+      letterSpacing: 2
+    },
+    placeholder: "CGLP-XXXX-XXXX",
+    value: codigo,
+    onChange: e => setCodigo(e.target.value.toUpperCase())
+  }), /*#__PURE__*/React.createElement("button", {
+    style: {
+      ...btnPrimary,
+      opacity: carregando ? 0.6 : 1
+    },
+    disabled: carregando,
+    onClick: ativar
+  }, "Desbloquear")), erro && /*#__PURE__*/React.createElement("p", {
+    style: {
+      fontSize: 12,
+      color: "#F0553B",
+      textAlign: "center",
+      marginTop: 12
+    }
+  }, erro)), /*#__PURE__*/React.createElement("p", {
+    style: {
+      fontSize: 10,
+      color: "#9AAFA7",
+      textAlign: "center",
+      marginTop: 8,
+      lineHeight: 1.5
+    }
+  }, "Uso informativo. N\xE3o \xE9 dispositivo m\xE9dico e n\xE3o substitui orienta\xE7\xE3o do seu m\xE9dico."));
+}
+
 /* ===== Consentimento ===== */
 function Consent({
   onAccept
@@ -641,7 +1289,7 @@ function ProfileForm({
   const [p, setP] = useState(initial);
   const bmi = p.weightKg && p.heightCm ? +p.weightKg / Math.pow(+p.heightCm / 100, 2) : null;
   const diario = MEDS[p.med].intervalDays === 1;
-  const ok = p.age && p.weightKg && p.heightCm && (diario || p.diaSemana !== undefined && p.diaSemana !== "");
+  const ok = p.nome && p.nome.trim() && p.age && p.weightKg && p.heightCm && (diario || p.diaSemana !== undefined && p.diaSemana !== "");
   const DIAS = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
   const body = /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Row, null, /*#__PURE__*/React.createElement("h2", {
     className: "display",
@@ -664,7 +1312,26 @@ function ProfileForm({
       color: "#5E7A72",
       margin: "6px 0 16px"
     }
-  }, "Informe o que foi prescrito pelo seu m\xE9dico. Pode alterar depois."), /*#__PURE__*/React.createElement(Label, null, "Princ\xEDpio ativo"), /*#__PURE__*/React.createElement(Chips, {
+  }, "Informe o que foi prescrito pelo seu m\xE9dico. Pode alterar depois."), /*#__PURE__*/React.createElement(Label, null, "Como quer ser chamado"), /*#__PURE__*/React.createElement("input", {
+    style: {
+      ...inp,
+      marginBottom: 4
+    },
+    type: "text",
+    value: p.nome || "",
+    onChange: e => setP({
+      ...p,
+      nome: e.target.value
+    }),
+    placeholder: "Seu nome ou apelido",
+    maxLength: 24
+  }), /*#__PURE__*/React.createElement("p", {
+    style: {
+      fontSize: 10,
+      color: "#9AAFA7",
+      margin: "6px 0 14px"
+    }
+  }, "Fica s\xF3 no seu aparelho \u2014 nada \xE9 enviado."), /*#__PURE__*/React.createElement(Label, null, "Princ\xEDpio ativo"), /*#__PURE__*/React.createElement(Chips, {
     items: selectable,
     val: p.med,
     onPick: m => setP({
@@ -843,6 +1510,7 @@ function ProfileForm({
 /* ===== App ===== */
 function App() {
   const [ready, setReady] = useState(false);
+  const [licenca, setLicenca] = useState(false);
   const [consent, setConsent] = useState(false);
   const [profile, setProfile] = useState(null);
   const [doses, setDoses] = useState([]);
@@ -859,6 +1527,7 @@ function App() {
   const [banner, setBanner] = useState(false);
   useEffect(() => {
     setConsent(!!load(K.consent));
+    setLicenca(licencaLocal());
     const p = load(K.profile);
     if (p) {
       setProfile(p);
@@ -914,6 +1583,9 @@ function App() {
     })();
   }, [remind, profile, nextDate ? nextDate.getTime() : 0]);
   if (!ready) return null;
+  if (!licenca) return /*#__PURE__*/React.createElement(Paywall, {
+    onLiberado: () => setLicenca(true)
+  });
   if (!consent) return /*#__PURE__*/React.createElement(Consent, {
     onAccept: () => {
       save(K.consent, true);
@@ -923,6 +1595,7 @@ function App() {
   if (!profile) return /*#__PURE__*/React.createElement(ProfileForm, {
     first: true,
     initial: {
+      nome: "",
       med: "Semaglutida",
       doseMg: 0.5,
       age: "",
@@ -1017,7 +1690,7 @@ function App() {
       fontSize: 24,
       fontWeight: 700
     }
-  }, "Meu acompanhamento")), /*#__PURE__*/React.createElement("button", {
+  }, profile.nome ? `Olá, ${profile.nome.split(" ")[0]}` : "Meu acompanhamento")), /*#__PURE__*/React.createElement("button", {
     onClick: () => setEditing(true),
     style: {
       display: "flex",
@@ -1292,6 +1965,8 @@ function App() {
       marginTop: 6
     }
   }, "No iPhone, os lembretes s\xF3 funcionam com o app adicionado \xE0 Tela de In\xEDcio.")), last && /*#__PURE__*/React.createElement(WeekRing, {
+    doses: doses
+  }), last && /*#__PURE__*/React.createElement(CycleTimeline, {
     doses: doses
   }), last && /*#__PURE__*/React.createElement("div", {
     style: cardStyle()

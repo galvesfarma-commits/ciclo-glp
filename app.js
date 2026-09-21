@@ -1,5 +1,13 @@
 const { useState, useEffect, useMemo, useRef } = React;
 
+/* ===== CONFIG DE MONETIZAÇÃO ===== */
+// Troque pela URL das suas Edge Functions do Supabase:
+const FUNCTIONS_URL = "https://yyblozmymrqrtwidknib.supabase.co/functions/v1";
+const PRECO = "R$ 19,90";
+const LICENSE_KEY = "cglp:licenca";
+const licencaLocal = () => { try { return localStorage.getItem(LICENSE_KEY) === "ativa"; } catch { return false; } };
+const salvarLicenca = () => { try { localStorage.setItem(LICENSE_KEY, "ativa"); } catch {} };
+
 /* ===== PARÂMETROS DE BULA (meia-vida, Tmax) ===== */
 const MEDS = {
   Semaglutida: { halfLifeH: 168, tmaxH: 48, intervalDays: 7, doses: [0.25, 0.5, 1.0, 1.7, 2.4], vias: ["GLP-1"], marcas: "Ozempic, Wegovy", fonte: "Bula FDA/EMA — meia-vida ~7 dias; Tmax 1–3 dias; equilíbrio em 4–5 semanas." },
@@ -31,6 +39,60 @@ const actLabel = (p) => (p >= 0.8 ? "Atividade alta" : p >= 0.6 ? "Atividade boa
 const polar = (cx, cy, r, d) => { const a = ((d - 90) * Math.PI) / 180; return [cx + r * Math.cos(a), cy + r * Math.sin(a)]; };
 const arcPath = (cx, cy, r, a0, a1) => { const [x0, y0] = polar(cx, cy, r, a0), [x1, y1] = polar(cx, cy, r, a1); return `M ${x0} ${y0} A ${r} ${r} 0 ${a1 - a0 > 180 ? 1 : 0} 1 ${x1} ${y1}`; };
 const selectable = Object.keys(MEDS).filter((m) => !MEDS[m].investigacional);
+
+/* ============================================================
+   NARRATIVA DO CICLO — o que o MECANISMO DE AÇÃO e a bula descrevem
+   em cada fase da semana. Não afirma o que o usuário sente; descreve
+   o comportamento esperado da droga segundo o fabricante, atrelado
+   à fase da curva (subida, pico, platô, vale).
+   ============================================================ */
+// classe do fármaco define a narrativa (semanais: GLP-1 puro x duplo)
+function classeNarrativa(med) {
+  if (MEDS[med].intervalDays === 1) return "diario";
+  return MEDS[med].vias.includes("GIP") ? "duplo" : "glp1";
+}
+
+const NARRATIVA = {
+  glp1: {
+    titulo: "Semaglutida ao longo da semana",
+    dias: [
+      { fase: "Absorção", farm: "A dose recém-aplicada é absorvida no subcutâneo; a concentração começa a subir rumo ao Tmax (1–3 dias).", sensacao: "O sinal de saciedade se restabelece gradualmente. Muitos relatam menos 'fome de fundo' já nas primeiras horas.", cor: "#3B82F6" },
+      { fase: "Subida", farm: "Concentração em elevação. A ativação de receptores GLP-1 no hipotálamo e no trato digestivo se intensifica.", sensacao: "Esvaziamento gástrico mais lento — a comida 'permanece' mais tempo, prolongando a sensação de plenitude após as refeições.", cor: "#3B82F6" },
+      { fase: "Pico", farm: "A curva atinge seu ponto máximo no ciclo. Ação central sobre o apetite no auge segundo o mecanismo.", sensacao: "Fase de maior controle de apetite esperada. Redução de 'food noise' e menor impulso por beliscar entre refeições.", cor: "#16C784" },
+      { fase: "Platô alto", farm: "Concentração ainda elevada, iniciando declínio lento graças à meia-vida longa (~7 dias).", sensacao: "Saciedade sustentada. O efeito não 'cai' de um dia para o outro — é o que permite a dose semanal.", cor: "#16C784" },
+      { fase: "Declínio", farm: "A concentração desce de forma gradual e previsível. Boa parte do efeito ainda está presente.", sensacao: "Controle de apetite mantido, tendendo a suavizar. Efeito acumulado das semanas anteriores continua atuando.", cor: "#F5A623" },
+      { fase: "Vale próximo", farm: "Concentração se aproxima do ponto mais baixo do ciclo, antes da próxima dose.", sensacao: "Alguns notam o apetite um pouco mais presente perto do fim do intervalo — esperado pela farmacocinética.", cor: "#F5A623" },
+      { fase: "Vale / renovação", farm: "Ponto mais baixo do ciclo. A próxima aplicação recompõe a concentração e reinicia a curva.", sensacao: "Momento da nova dose. Manter o dia fixo estabiliza o efeito ao longo das semanas.", cor: "#F0553B" },
+    ],
+  },
+  duplo: {
+    titulo: "Tirzepatida ao longo da semana",
+    dias: [
+      { fase: "Absorção", farm: "Dose absorvida; concentração sobe rumo ao Tmax (~24 h). Duas vias entram em ação: GLP-1 e GIP.", sensacao: "Restabelecimento da saciedade. A via GIP soma efeito metabólico ao controle de apetite do GLP-1.", cor: "#3B82F6" },
+      { fase: "Pico", farm: "Curva próxima do máximo (Tmax ~1 dia). Ação combinada GLP-1 + GIP no auge segundo o mecanismo.", sensacao: "Fase de maior controle esperado. A dupla ação tende a somar saciedade e regulação metabólica.", cor: "#16C784" },
+      { fase: "Platô alto", farm: "Concentração elevada, declínio ainda lento (meia-vida ~5 dias). Acúmulo de ~1,6× no equilíbrio.", sensacao: "Saciedade robusta e sustentada, característica do agonista duplo.", cor: "#16C784" },
+      { fase: "Declínio", farm: "Descida gradual e previsível da concentração. As duas vias seguem ativas.", sensacao: "Controle de apetite mantido, começando a suavizar em direção ao fim do intervalo.", cor: "#F5A623" },
+      { fase: "Declínio", farm: "Concentração continua caindo de forma controlada; efeito acumulado dos ciclos anteriores permanece.", sensacao: "Saciedade presente, tendência a redução leve — comportamento esperado da curva.", cor: "#F5A623" },
+      { fase: "Vale próximo", farm: "Aproximação do ponto mais baixo do ciclo, antes da reaplicação.", sensacao: "Apetite pode se mostrar um pouco mais presente perto da próxima dose.", cor: "#F5A623" },
+      { fase: "Vale / renovação", farm: "Ponto mais baixo. A próxima dose recompõe a concentração das duas vias e reinicia o ciclo.", sensacao: "Momento da nova aplicação. Dia fixo mantém o efeito estável ao longo das semanas.", cor: "#F0553B" },
+    ],
+  },
+  diario: {
+    titulo: "Liraglutida ao longo do dia",
+    dias: [
+      { fase: "Pico do dia", farm: "Meia-vida curta (~13 h) e Tmax 8–12 h: a concentração sobe e atinge o pico algumas horas após a aplicação diária.", sensacao: "Saciedade mais concentrada no período após a dose. Por isso a aplicação é diária, no mesmo horário.", cor: "#16C784" },
+      { fase: "Declínio", farm: "Após o pico, a concentração cai ao longo do dia; a dose seguinte recompõe o nível.", sensacao: "Efeito de apetite tende a suavizar até a próxima aplicação. A regularidade diária mantém a saciedade estável.", cor: "#F5A623" },
+    ],
+  },
+};
+
+// mapeia o dia do ciclo (0–6) para o índice da narrativa (que pode ter 2 ou 7 fases)
+function narrativaDoDia(med, dayInCycle, nSeg) {
+  const cls = classeNarrativa(med);
+  const arr = NARRATIVA[cls].dias;
+  if (cls === "diario") return arr[dayInCycle < 4 ? 0 : 1];
+  return arr[Math.min(dayInCycle, arr.length - 1)];
+}
 
 /* ===== localStorage ===== */
 const K = { profile: "cglp:profile", doses: "cglp:doses", weights: "cglp:weights", remind: "cglp:remind", consent: "cglp:consent" };
@@ -133,6 +195,189 @@ const Pill = ({ children, bg, c }) => <span style={{ padding: "4px 11px", border
 const btnPrimary = { width: "100%", padding: "14px", borderRadius: 999, border: "none", fontWeight: 700, fontSize: 14, color: "#fff", background: "linear-gradient(120deg,#16C784,#1273D6)" };
 const inp = { width: "100%", borderRadius: 12, border: "1px solid #E2E8E4", padding: "10px 12px", fontSize: 14 };
 
+/* ===== Linha do tempo do ciclo: o que a droga faz dia a dia ===== */
+function CycleTimeline({ doses }) {
+  const [aberto, setAberto] = useState(null);
+  const today = new Date(); today.setHours(12, 0, 0, 0);
+  const last = doses[doses.length - 1], med = last.med, cls = classeNarrativa(med);
+  const iv = MEDS[med].intervalDays, cycleH = iv * 24, t0 = last.date.getTime();
+  const rel = (t) => doses.reduce((a, d) => a + bateman(d.med, (t - d.date.getTime()) / 3600000, d.doseMg), 0);
+  const ssPeak = steadyStatePeak(med, last.doseMg);
+  const nDias = cls === "diario" ? 2 : 7;
+  const dayInCycle = Math.min(nDias - 1, Math.max(0, Math.floor(((today.getTime() - t0) / 3600000) / (cycleH / nDias))));
+  const info = NARRATIVA[cls];
+
+  const dias = Array.from({ length: nDias }, (_, i) => {
+    const nd = narrativaDoDia(med, i, nDias);
+    const mid = t0 + ((i + 0.5) * cycleH / nDias) * 3600000;
+    const pct = Math.round(Math.min(100, rel(mid) / ssPeak * 100));
+    return { ...nd, pct, i };
+  });
+
+  return (
+    <div style={cardStyle("linear-gradient(160deg,#FFFFFF,#F4FAFF)")}>
+      <Row><Label>🗓️ O que acontece no ciclo</Label><Pill bg="#1273D622" c="#1273D6">segundo o mecanismo</Pill></Row>
+      <p style={{ fontSize: 12, fontWeight: 600, margin: "2px 0 12px" }}>{info.titulo}</p>
+
+      <div style={{ position: "relative" }}>
+        {/* trilho vertical */}
+        <div style={{ position: "absolute", left: 15, top: 6, bottom: 6, width: 2, background: "#E6EFE9" }} />
+        {dias.map((d) => {
+          const hoje = d.i === dayInCycle;
+          const on = aberto === d.i || (aberto === null && hoje);
+          const rotulo = cls === "diario" ? (d.i === 0 ? "Após a dose" : "Fim do dia") : `Dia ${d.i + 1}`;
+          return (
+            <div key={d.i} style={{ position: "relative", paddingLeft: 42, marginBottom: 10 }}>
+              {/* marcador */}
+              <div style={{ position: "absolute", left: 6, top: 2, width: 20, height: 20, borderRadius: 10, background: hoje ? d.cor : "#fff", border: `2px solid ${d.cor}`, boxShadow: hoje ? `0 0 0 4px ${d.cor}22` : "none", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                {hoje && <div style={{ width: 6, height: 6, borderRadius: 3, background: "#fff" }} />}
+              </div>
+              <button onClick={() => setAberto(on ? -1 : d.i)} style={{ width: "100%", textAlign: "left", background: on ? "#F4FAFF" : "transparent", border: "none", borderRadius: 12, padding: on ? "8px 10px" : "2px 4px", cursor: "pointer" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: hoje ? d.cor : "#41564F" }}>{rotulo}</span>
+                  <span style={{ fontSize: 11, fontWeight: 600, color: d.cor }}>· {d.fase}</span>
+                  {hoje && <span style={{ marginLeft: "auto", fontSize: 9, fontWeight: 700, color: "#fff", background: d.cor, padding: "2px 7px", borderRadius: 999 }}>HOJE</span>}
+                  <span style={{ marginLeft: hoje ? 6 : "auto", fontSize: 10, color: "#93A8A0" }}>{d.pct}%</span>
+                </div>
+                {on && (
+                  <div style={{ marginTop: 6 }}>
+                    <p style={{ fontSize: 11, color: "#41564F", lineHeight: 1.45, marginBottom: 5 }}><b style={{ color: "#1273D6" }}>Farmacologia · </b>{d.farm}</p>
+                    <p style={{ fontSize: 11, color: "#41564F", lineHeight: 1.45 }}><b style={{ color: "#0E7C5A" }}>Esperado · </b>{d.sensacao}</p>
+                  </div>
+                )}
+              </button>
+            </div>
+          );
+        })}
+      </div>
+
+      <p style={{ fontSize: 10, color: "#9AAFA7", marginTop: 6, lineHeight: 1.4 }}>
+        Descrição do comportamento médio do medicamento segundo o mecanismo de ação e a bula do fabricante, alinhada à curva de referência. <b>Não é o que você necessariamente sente</b> — respostas individuais variam. Não substitui orientação médica.
+      </p>
+    </div>
+  );
+}
+
+/* ===== Paywall (tela de compra / ativação) ===== */
+function Paywall({ onLiberado }) {
+  const [aba, setAba] = useState("comprar"); // comprar | codigo
+  const [email, setEmail] = useState("");
+  const [carregando, setCarregando] = useState(false);
+  const [erro, setErro] = useState("");
+  const [codigo, setCodigo] = useState("");
+  const [codigoGerado, setCodigoGerado] = useState("");
+
+  // ao voltar do checkout com ?pago=1, busca o código gerado
+  useEffect(() => {
+    const q = new URLSearchParams(location.search);
+    const ref = localStorage.getItem("cglp:ref");
+    if (q.get("pago") === "1" && ref) {
+      setAba("codigo"); setCarregando(true);
+      let tentativas = 0;
+      const busca = async () => {
+        tentativas++;
+        try {
+          const r = await fetch(FUNCTIONS_URL + "/validar-codigo", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ modo: "buscar", ref }) });
+          const d = await r.json();
+          if (d.ok && d.codigo) { setCodigoGerado(d.codigo); setCodigo(d.codigo); setCarregando(false); localStorage.removeItem("cglp:ref"); return; }
+        } catch {}
+        if (tentativas < 8) setTimeout(busca, 2500);
+        else { setCarregando(false); setErro("O pagamento pode levar alguns instantes. Se você pagou, use seu código quando chegar."); }
+      };
+      busca();
+      history.replaceState(null, "", location.pathname);
+    }
+  }, []);
+
+  async function comprar() {
+    setErro(""); setCarregando(true);
+    try {
+      const r = await fetch(FUNCTIONS_URL + "/criar-pagamento", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email }) });
+      const d = await r.json();
+      if (d.init_point) { localStorage.setItem("cglp:ref", d.ref); location.href = d.init_point; }
+      else setErro("Não foi possível iniciar o pagamento. Tente novamente.");
+    } catch { setErro("Falha de conexão. Verifique sua internet."); }
+    setCarregando(false);
+  }
+
+  async function ativar() {
+    setErro(""); setCarregando(true);
+    try {
+      const r = await fetch(FUNCTIONS_URL + "/validar-codigo", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ modo: "ativar", codigo }) });
+      const d = await r.json();
+      if (d.ok) { salvarLicenca(); onLiberado(); }
+      else setErro(d.erro || "Código inválido.");
+    } catch { setErro("Falha de conexão."); }
+    setCarregando(false);
+  }
+
+  return (
+    <div style={{ maxWidth: 480, margin: "0 auto", padding: 24, minHeight: "100vh", display: "flex", flexDirection: "column", justifyContent: "center" }}>
+      <div style={{ textAlign: "center", marginBottom: 24 }}>
+        <div style={{ width: 84, height: 84, borderRadius: 24, margin: "0 auto 16px", background: "linear-gradient(135deg,#0E7C5A,#0B5C7A)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <svg width="52" height="52" viewBox="0 0 1024 1024">
+            <defs><linearGradient id="pw" x1="0.1" y1="0" x2="0.9" y2="1"><stop offset="0" stopColor="#16C784" /><stop offset="0.5" stopColor="#3B82F6" /><stop offset="1" stopColor="#8B5CF6" /></linearGradient></defs>
+            <path d="M 566 210 A 322 322 0 1 1 458 210" fill="none" stroke="url(#pw)" strokeWidth="58" strokeLinecap="round" />
+            <circle cx="566" cy="210" r="35" fill="#16C784" />
+            <g transform="translate(512,512)"><path d="M 150 -70 A 168 168 0 1 0 168 40 L 168 8 L 40 8" fill="none" stroke="#fff" strokeWidth="68" strokeLinecap="round" strokeLinejoin="round" /></g>
+          </svg>
+        </div>
+        <h1 className="display" style={{ fontSize: 28, fontWeight: 700 }}>Ciclo GLP</h1>
+        <p style={{ fontSize: 14, color: "#5E7A72", marginTop: 6 }}>Seu acompanhamento completo de GLP-1</p>
+      </div>
+
+      {codigoGerado ? (
+        <div style={{ ...cardStyle(), textAlign: "center" }}>
+          <p style={{ fontSize: 30, marginBottom: 8 }}>✅</p>
+          <p style={{ fontWeight: 700, fontSize: 16, marginBottom: 6 }}>Pagamento confirmado!</p>
+          <p style={{ fontSize: 12, color: "#5E7A72", marginBottom: 12 }}>Guarde seu código de acesso. Use-o para desbloquear em outros aparelhos:</p>
+          <div style={{ background: "#F1FBF6", borderRadius: 12, padding: "14px", fontFamily: "monospace", fontSize: 20, fontWeight: 700, letterSpacing: 2, color: "#0E7C5A", marginBottom: 14 }}>{codigoGerado}</div>
+          <button style={btnPrimary} onClick={() => { salvarLicenca(); onLiberado(); }}>Entrar no app</button>
+        </div>
+      ) : (
+        <div style={cardStyle()}>
+          <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+            <button onClick={() => { setAba("comprar"); setErro(""); }} style={{ flex: 1, padding: 10, borderRadius: 12, border: "none", fontWeight: 700, fontSize: 13, background: aba === "comprar" ? "#0E7C5A" : "#F1FBF6", color: aba === "comprar" ? "#fff" : "#41564F" }}>Comprar</button>
+            <button onClick={() => { setAba("codigo"); setErro(""); }} style={{ flex: 1, padding: 10, borderRadius: 12, border: "none", fontWeight: 700, fontSize: 13, background: aba === "codigo" ? "#0E7C5A" : "#F1FBF6", color: aba === "codigo" ? "#fff" : "#41564F" }}>Já tenho código</button>
+          </div>
+
+          {aba === "comprar" ? (
+            <>
+              <div style={{ textAlign: "center", marginBottom: 14 }}>
+                <span className="display" style={{ fontSize: 40, fontWeight: 800, color: "#123B33" }}>{PRECO}</span>
+                <p style={{ fontSize: 12, color: "#5E7A72" }}>pagamento único · acesso vitalício</p>
+              </div>
+              <div style={{ fontSize: 13, color: "#41564F", lineHeight: 1.7, marginBottom: 16 }}>
+                ✓ Registro de doses e lembretes<br />
+                ✓ Curva farmacocinética da bula<br />
+                ✓ Linha do tempo do ciclo dia a dia<br />
+                ✓ Evolução de peso e IMC<br />
+                ✓ Todos os princípios ativos
+              </div>
+              <input style={{ ...inp, marginBottom: 10 }} type="email" placeholder="Seu e-mail (para recuperar o código)" value={email} onChange={(e) => setEmail(e.target.value)} />
+              <button style={{ ...btnPrimary, opacity: carregando ? 0.6 : 1 }} disabled={carregando} onClick={comprar}>{carregando ? "Abrindo pagamento…" : "Pagar com Mercado Pago"}</button>
+              <p style={{ fontSize: 10, color: "#9AAFA7", textAlign: "center", marginTop: 10 }}>Pagamento processado com segurança pelo Mercado Pago. Pix, cartão ou boleto.</p>
+            </>
+          ) : (
+            <>
+              <p style={{ fontSize: 13, color: "#41564F", marginBottom: 12 }}>Digite o código que você recebeu após a compra:</p>
+              {carregando && <p style={{ fontSize: 12, color: "#5E7A72", marginBottom: 10 }}>Confirmando seu pagamento…</p>}
+              <input style={{ ...inp, marginBottom: 12, textAlign: "center", fontFamily: "monospace", fontSize: 18, letterSpacing: 2 }} placeholder="CGLP-XXXX-XXXX" value={codigo} onChange={(e) => setCodigo(e.target.value.toUpperCase())} />
+              <button style={{ ...btnPrimary, opacity: carregando ? 0.6 : 1 }} disabled={carregando} onClick={ativar}>Desbloquear</button>
+            </>
+          )}
+
+          {erro && <p style={{ fontSize: 12, color: "#F0553B", textAlign: "center", marginTop: 12 }}>{erro}</p>}
+        </div>
+      )}
+
+      <p style={{ fontSize: 10, color: "#9AAFA7", textAlign: "center", marginTop: 8, lineHeight: 1.5 }}>
+        Uso informativo. Não é dispositivo médico e não substitui orientação do seu médico.
+      </p>
+    </div>
+  );
+}
+
 /* ===== Consentimento ===== */
 function Consent({ onAccept }) {
   return (
@@ -185,12 +430,15 @@ function ProfileForm({ initial, onSave, onClose, first }) {
   const [p, setP] = useState(initial);
   const bmi = p.weightKg && p.heightCm ? +p.weightKg / Math.pow(+p.heightCm / 100, 2) : null;
   const diario = MEDS[p.med].intervalDays === 1;
-  const ok = p.age && p.weightKg && p.heightCm && (diario || p.diaSemana !== undefined && p.diaSemana !== "");
+  const ok = p.nome && p.nome.trim() && p.age && p.weightKg && p.heightCm && (diario || p.diaSemana !== undefined && p.diaSemana !== "");
   const DIAS = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
   const body = (
     <>
       <Row><h2 className="display" style={{ fontSize: 20, fontWeight: 700 }}>{first ? "Seu tratamento" : "Editar perfil"}</h2>{!first && <button onClick={onClose} style={{ border: "none", background: "#E4F0E9", borderRadius: 999, width: 32, height: 32 }}>✕</button>}</Row>
       <p style={{ fontSize: 12, color: "#5E7A72", margin: "6px 0 16px" }}>Informe o que foi prescrito pelo seu médico. Pode alterar depois.</p>
+      <Label>Como quer ser chamado</Label>
+      <input style={{ ...inp, marginBottom: 4 }} type="text" value={p.nome || ""} onChange={(e) => setP({ ...p, nome: e.target.value })} placeholder="Seu nome ou apelido" maxLength={24} />
+      <p style={{ fontSize: 10, color: "#9AAFA7", margin: "6px 0 14px" }}>Fica só no seu aparelho — nada é enviado.</p>
       <Label>Princípio ativo</Label>
       <Chips items={selectable} val={p.med} onPick={(m) => setP({ ...p, med: m, doseMg: MEDS[m].doses[0] })} />
       <p style={{ fontSize: 10, color: "#9AAFA7", margin: "6px 0 14px" }}>Referência comercial: {MEDS[p.med].marcas}</p>
@@ -230,6 +478,7 @@ function ProfileForm({ initial, onSave, onClose, first }) {
 /* ===== App ===== */
 function App() {
   const [ready, setReady] = useState(false);
+  const [licenca, setLicenca] = useState(false);
   const [consent, setConsent] = useState(false);
   const [profile, setProfile] = useState(null);
   const [doses, setDoses] = useState([]);
@@ -244,6 +493,7 @@ function App() {
 
   useEffect(() => {
     setConsent(!!load(K.consent));
+    setLicenca(licencaLocal());
     const p = load(K.profile);
     if (p) { setProfile(p); setDoses((load(K.doses) || []).map((x) => ({ ...x, date: new Date(x.date) }))); setWeights((load(K.weights) || []).map((x) => ({ ...x, date: new Date(x.date) }))); }
     const rm = load(K.remind); if (rm) setRemind(rm);
@@ -271,8 +521,9 @@ function App() {
   }, [remind, profile, nextDate ? nextDate.getTime() : 0]);
 
   if (!ready) return null;
+  if (!licenca) return <Paywall onLiberado={() => setLicenca(true)} />;
   if (!consent) return <Consent onAccept={() => { save(K.consent, true); setConsent(true); }} />;
-  if (!profile) return <ProfileForm first initial={{ med: "Semaglutida", doseMg: 0.5, age: "", weightKg: "", heightCm: "", sex: "F", diaSemana: "", horario: "09:00" }} onSave={(p) => {
+  if (!profile) return <ProfileForm first initial={{ nome: "", med: "Semaglutida", doseMg: 0.5, age: "", weightKg: "", heightCm: "", sex: "F", diaSemana: "", horario: "09:00" }} onSave={(p) => {
     setProfile(p);
     // ancora a primeira dose na aplicação mais recente que corresponde ao dia/horário escolhidos
     const [hh, mm] = (p.horario || "09:00").split(":").map(Number);
@@ -304,7 +555,7 @@ function App() {
   return (
     <div style={{ maxWidth: 480, margin: "0 auto", padding: "24px 16px 96px", background: "linear-gradient(180deg,#EAF7F0,#F2F6FD 55%,#FDF4EC)", minHeight: "100vh" }}>
       <Row style={{ marginBottom: 14 }}>
-        <div><p style={{ fontSize: 11, letterSpacing: 2, textTransform: "uppercase", color: "#4F8A72", fontWeight: 600 }}>Ciclo GLP</p><h1 className="display" style={{ fontSize: 24, fontWeight: 700 }}>Meu acompanhamento</h1></div>
+        <div><p style={{ fontSize: 11, letterSpacing: 2, textTransform: "uppercase", color: "#4F8A72", fontWeight: 600 }}>Ciclo GLP</p><h1 className="display" style={{ fontSize: 24, fontWeight: 700 }}>{profile.nome ? `Olá, ${profile.nome.split(" ")[0]}` : "Meu acompanhamento"}</h1></div>
         <button onClick={() => setEditing(true)} style={{ display: "flex", alignItems: "center", gap: 8, background: "#fff", border: "none", borderRadius: 999, padding: "6px 12px 6px 6px", boxShadow: "0 3px 8px rgba(22,48,43,.05)" }}>
           <span style={{ width: 32, height: 32, borderRadius: 16, background: "linear-gradient(135deg,#16C784,#1273D6)", display: "inline-block" }} />
           <span style={{ textAlign: "left" }}><span style={{ fontSize: 11, fontWeight: 600, display: "block" }}>Perfil</span><span style={{ fontSize: 9, color: "#7A928A" }}>IMC {bmi.toFixed(1)}</span></span>
@@ -381,6 +632,8 @@ function App() {
       )}
 
       {last && <WeekRing doses={doses} />}
+
+      {last && <CycleTimeline doses={doses} />}
 
       {/* Curva */}
       {last && (
